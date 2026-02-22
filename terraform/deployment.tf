@@ -12,6 +12,15 @@ resource "kubernetes_deployment" "devsu_demo" {
   spec {
     replicas = var.replicas
 
+    strategy {
+      type = "RollingUpdate"
+      rolling_update {
+        # Avoid requiring an extra pod during rollout on resource-constrained Minikube.
+        max_surge       = "0"
+        max_unavailable = "1"
+      }
+    }
+
     selector {
       match_labels = {
         app = "devsu-demo-nodejs"
@@ -100,6 +109,6 @@ resource "kubernetes_deployment" "devsu_demo" {
 
   timeouts {
     create = "3m"
-    update = "3m"
+    update = "6m"
   }
 }
