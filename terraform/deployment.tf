@@ -36,7 +36,7 @@ resource "kubernetes_deployment" "devsu_demo" {
         container {
           name              = "devsu-demo-nodejs"
           image             = "${var.image_name}:${var.image_tag}"
-          image_pull_policy = "Always"
+          image_pull_policy = "IfNotPresent"
 
           port {
             name           = "http"

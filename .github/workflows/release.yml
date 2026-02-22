@@ -44,28 +44,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 2. Deploy to Kubernetes via Terraform ───────────────────────────────────
+  # ── 2. Deploy to Kubernetes via Terraform (self-hosted runner) ─────────────
   deploy:
-    name: Deploy to Kubernetes
-    runs-on: ubuntu-latest
+    name: Deploy to Kubernetes (local Minikube)
+    runs-on: [self-hosted, minikube]
     needs: docker
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.29.0'
-
-      - name: Configure kubeconfig
+      - name: Build image inside Minikube Docker daemon
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.7.5"
+          eval $(minikube docker-env)
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+                     ${{ env.IMAGE_NAME }}:latest
 
       - name: Terraform Init
         working-directory: terraform
@@ -78,10 +70,15 @@ jobs:
           TF_VAR_image_tag: ${{ env.IMAGE_TAG }}
           TF_VAR_database_user: ${{ secrets.DB_USER }}
           TF_VAR_database_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_kubeconfig_context: "minikube"
         run: terraform apply -auto-approve
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/devsu-demo-deployment \
+          minikube kubectl -- rollout status deployment/devsu-demo-deployment \
             -n devsu-demo --timeout=120s
+
+      - name: Show pods
+        run: minikube kubectl -- get pods -n devsu-demo -o wide
+
 
