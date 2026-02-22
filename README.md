@@ -126,8 +126,7 @@ Runs on **semver tags** (`v1.0.0`) or **manual dispatch** from the Actions UI.
 | Stage | Tool | Notes |
 |---|---|---|
 | Docker Build & Push | Docker Hub | Tags `v1.0.0` and `latest` |
-
-> **Kubernetes deploy** is done locally via `./deploy-local.sh` (Terraform + Minikube).
+| Deploy to Kubernetes | Terraform | `terraform apply -auto-approve` |
 
 #### Create a release
 
