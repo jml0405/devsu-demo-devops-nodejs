@@ -12,12 +12,12 @@ def load_version(repo_root: Path) -> str:
     return package.get("version") or "0.0.0"
 
 
-def build_tag(version: str) -> str:
-    run_number = os.getenv("GITHUB_RUN_NUMBER") or "0"
-    sha = os.getenv("GITHUB_SHA") or ""
-    short_sha = sha[:7] if sha else ""
+def build_tag(version: str, run_number: str | None = None, sha: str | None = None) -> str:
+    resolved_run_number = run_number or os.getenv("GITHUB_RUN_NUMBER") or "0"
+    resolved_sha = sha or os.getenv("GITHUB_SHA") or ""
+    short_sha = resolved_sha[:7] if resolved_sha else ""
 
-    tag = f"v{version}-{run_number}"
+    tag = f"v{version}-{resolved_run_number}"
     if short_sha:
         tag = f"{tag}-{short_sha}"
     return tag
@@ -36,11 +36,13 @@ def write_outputs(tag: str, output_file: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute a Docker image tag for CI.")
     parser.add_argument("--output", default="image_tag.txt", help="File to write the tag.")
+    parser.add_argument("--run-number", default=None, help="Override GITHUB_RUN_NUMBER.")
+    parser.add_argument("--sha", default=None, help="Override GITHUB_SHA.")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     version = load_version(repo_root)
-    tag = build_tag(version)
+    tag = build_tag(version, run_number=args.run_number, sha=args.sha)
     write_outputs(tag, args.output)
 
     print(tag)
