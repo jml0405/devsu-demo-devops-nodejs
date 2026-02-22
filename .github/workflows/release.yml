@@ -27,16 +27,13 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Compute image tag from CI metadata
         run: |
-          IMAGE_TAG=$(python3 scripts/compute_image_tag.py \
-            --run-number "${{ github.event.workflow_run.run_number }}" \
-            --sha "${{ github.event.workflow_run.head_sha }}" \
-            --output image_tag.txt)
+          VERSION=$(awk -F'"' '/"version"/ {print $4; exit}' package.json)
+          CI_RUN_NUMBER="${{ github.event.workflow_run.run_number }}"
+          CI_SHA="${{ github.event.workflow_run.head_sha }}"
+          CI_SHORT_SHA="${CI_SHA:0:7}"
+          IMAGE_TAG="v${VERSION}-${CI_RUN_NUMBER}-${CI_SHORT_SHA}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "TF_VAR_image_tag=$IMAGE_TAG" >> $GITHUB_ENV
 
