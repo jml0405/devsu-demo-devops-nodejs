@@ -119,14 +119,15 @@ Runs on every **push** and **pull request** to `main`.
 | Unit Tests | Jest | All tests must pass |
 | Code Coverage | Jest `--coverage` | ≥80% stmts/lines, ≥70% branches |
 
-### [`release.yml`](.github/workflows/release.yml) – Release & Deploy
+### [`release.yml`](.github/workflows/release.yml) – Release & Docker Push
 
 Runs on **semver tags** (`v1.0.0`) or **manual dispatch** from the Actions UI.
 
 | Stage | Tool | Notes |
 |---|---|---|
 | Docker Build & Push | Docker Hub | Tags `v1.0.0` and `latest` |
-| Deploy to Kubernetes | Terraform | `terraform apply -auto-approve` |
+
+> **Kubernetes deploy** is done locally via `./deploy-local.sh` (Terraform + Minikube).
 
 #### Create a release
 
