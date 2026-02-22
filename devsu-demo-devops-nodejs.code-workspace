@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "devsu-demo-devops-nodejs",
+			"path": "."
+		},
+		{
+			"name": "devsu test",
+			"path": "../../devsu test"
+		}
+	],
+	"settings": {}
+}

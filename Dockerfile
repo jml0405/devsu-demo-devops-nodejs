@@ -20,8 +20,7 @@ USER node
 
 WORKDIR /app
 
-# Copy production node_modules + app from builder
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+# Copy production node_modules + app from builder (single layer)
 COPY --chown=node:node --from=builder /app .
 
 # Runtime environment variables (overridden by ConfigMap/Secret in k8s)

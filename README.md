@@ -48,7 +48,7 @@ flowchart TD
 ### Installation
 
 ```bash
-git clone https://github.com/<your-username>/devsu-demo-devops-nodejs.git
+git clone https://github.com/jml0405/devsu-demo-devops-nodejs.git
 cd devsu-demo-devops-nodejs
 npm ci
 ```
@@ -124,6 +124,56 @@ The pipeline is defined in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-
 | `DOCKERHUB_USERNAME` | Docker Hub username |
 | `DOCKERHUB_TOKEN` | Docker Hub access token |
 | `KUBE_CONFIG` | base64-encoded kubeconfig for target cluster |
+| `DB_USER` | Database user (passed as `TF_VAR_database_user`) |
+| `DB_PASSWORD` | Database password (passed as `TF_VAR_database_password`) |
+
+---
+
+## IaC – Terraform
+
+All Kubernetes resources are also managed as code using the [Terraform Kubernetes provider](https://registry.terraform.io/providers/hashicorp/kubernetes/latest).
+
+### Install Terraform
+
+```bash
+# Arch Linux
+sudo pacman -S terraform
+
+# Or via official installer
+curl -fsSL https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip \
+  | sudo busybox unzip -d /usr/local/bin -
+```
+
+### Deploy with Terraform (local / minikube)
+
+```bash
+# Copy and optionally edit vars
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+
+cd terraform/
+terraform init
+terraform plan -var="image_tag=latest"
+terraform apply -auto-approve -var="image_tag=latest"
+```
+
+### Tear down
+
+```bash
+cd terraform/
+terraform destroy -auto-approve
+```
+
+### Terraform Resources
+
+| File | Resource |
+|---|---|
+| `namespace.tf` | `kubernetes_namespace` |
+| `configmap.tf` | `kubernetes_config_map` |
+| `secret.tf` | `kubernetes_secret` |
+| `deployment.tf` | `kubernetes_deployment` |
+| `service.tf` | `kubernetes_service` |
+| `hpa.tf` | `kubernetes_horizontal_pod_autoscaler_v2` |
+| `ingress.tf` | `kubernetes_ingress_v1` |
 
 ---
 
