@@ -118,30 +118,22 @@ Runs on every **push** and **pull request** to `main`.
 | Static Analysis | ESLint | Zero warnings allowed |
 | Unit Tests | Jest | All tests must pass |
 | Code Coverage | Jest `--coverage` | ≥80% stmts/lines, ≥70% branches |
+| Docker Build & Push | Docker Hub | Image tag computed by `scripts/compute_image_tag.py` |
 
-### [`release.yml`](.github/workflows/release.yml) – Release & Docker Push
+### [`release.yml`](.github/workflows/release.yml) – Release to Minikube
 
-Runs on **semver tags** (`v1.0.0`) or **manual dispatch** from the Actions UI.
+Runs automatically when the CI workflow completes successfully.
 
 | Stage | Tool | Notes |
 |---|---|---|
-| Docker Build & Push | Docker Hub | Tags `v1.0.0` and `latest` |
-| Deploy to Kubernetes | Terraform | `terraform apply -auto-approve` |
-
-#### Create a release
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+| Deploy to Kubernetes | Terraform | `terraform apply -auto-approve` with the CI image tag |
 
 ### Required GitHub Secrets
 
 | Secret | Used by | Description |
 |---|---|---|
-| `DOCKERHUB_USERNAME` | release.yml | Docker Hub username |
-| `DOCKERHUB_TOKEN` | release.yml | Docker Hub access token |
-| `KUBE_CONFIG` | release.yml | `base64 -w0 ~/.kube/config` |
+| `DOCKERHUB_USERNAME` | ci.yml, release.yml | Docker Hub username |
+| `DOCKERHUB_TOKEN` | ci.yml | Docker Hub access token |
 | `DB_USER` | release.yml | Passed as `TF_VAR_database_user` |
 | `DB_PASSWORD` | release.yml | Passed as `TF_VAR_database_password` |
 
