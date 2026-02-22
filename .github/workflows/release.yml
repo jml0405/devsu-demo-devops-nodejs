@@ -41,6 +41,21 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      - name: Import existing resources (idempotent)
+        working-directory: terraform
+        run: |
+          import_resource() {
+            terraform import -input=false "$1" "$2" || true
+          }
+
+          import_resource kubernetes_namespace.devsu_demo devsu-demo
+          import_resource kubernetes_config_map.devsu_demo devsu-demo/devsu-demo-config
+          import_resource kubernetes_secret.devsu_demo devsu-demo/devsu-demo-secret
+          import_resource kubernetes_deployment.devsu_demo devsu-demo/devsu-demo-deployment
+          import_resource kubernetes_service.devsu_demo devsu-demo/devsu-demo-svc
+          import_resource kubernetes_horizontal_pod_autoscaler_v2.devsu_demo devsu-demo/devsu-demo-hpa
+          import_resource kubernetes_ingress_v1.devsu_demo devsu-demo/devsu-demo-ingress
+
       - name: Terraform Apply
         working-directory: terraform
         env:
