@@ -20,22 +20,39 @@ flowchart TD
         V --> D[Docker Build & Push\nDocker Hub]
     end
 
-    subgraph REL ["GitHub Actions – Release (AWS)"]
+    subgraph REL ["GitHub Actions – Release"]
         direction TB
-        W[workflow_run\nCI success on main] --> P[Terraform Apply\nAWS EC2]
-        M[workflow_dispatch\nmanual destroy/override] --> X[Terraform Destroy/Apply]
+        W[workflow_run\nCI success on main] --> I[Terraform Init + Import]
+        I --> A[Terraform Apply\nMinikube]
+    end
+
+    subgraph RELAWS ["GitHub Actions – AWS Release (manual)"]
+        direction TB
+        M[workflow_dispatch] --> TA[Terraform Apply/Destroy\nAWS EC2]
     end
 
     GH --> CI
     CI --> REL
+    GH --> RELAWS
 
-    subgraph AWS ["AWS Cloud"]
+    subgraph K8S ["Kubernetes Cluster (namespace: devsu-demo)"]
         direction LR
-        EC2[EC2 t3.micro] --> API[Public Endpoint :80/api/users]
+        ING[Ingress] --> SVC[Service\nClusterIP :8000]
+        SVC --> P1[Pod 1]
+        SVC --> P2[Pod 2]
+        HPA[HPA\nmin:2 / max:5] -.scales.-> DEP[Deployment]
+        CM[ConfigMap] -.env.-> P1 & P2
+        SEC[Secret] -.env.-> P1 & P2
     end
 
-    P --> AWS
-    X --> AWS
+    A --> K8S
+
+    subgraph AWS ["AWS"]
+        direction LR
+        EC2[EC2 t3.micro] --> API[Public Endpoint :80]
+    end
+
+    TA --> AWS
 ```
 
 ---
@@ -46,7 +63,7 @@ flowchart TD
 
 - Node.js 18.15.0
 - Docker 24+
-- AWS account and GitHub repository secrets configured for release workflow
+- kubectl + minikube (for local k8s)
 
 ### Installation
 
@@ -109,7 +126,7 @@ curl -X POST http://localhost:8000/api/users \
 
 ## CI/CD Pipeline
 
-The pipeline is split into two workflows:
+The pipeline is split into three workflows:
 
 ### [`ci.yml`](.github/workflows/ci.yml) – Continuous Integration
 
@@ -130,44 +147,57 @@ Versioning visibility in Actions:
 - Workflow `Summary` includes the final image tag (`image:tag`).
 - Artifact `image-metadata-<tag>` stores image tag, image ref, commit and run metadata.
 
-### [`release.yml`](.github/workflows/release.yml) – Release to AWS EC2
+### [`release.yml`](.github/workflows/release.yml) – Release to Minikube
 
-Runs automatically when CI completed successfully from a **push to `main`** (`workflow_run`).
-Also supports **manual dispatch** for controlled `deploy`/`destroy`.
+Runs automatically only when CI completed successfully from a **push to `main`** (`workflow_run`).
 
 | Stage | Tool | Notes |
 |---|---|---|
-| Resolve release parameters | Bash | Computes CI image tag for automatic runs |
-| Terraform init (S3 backend) | Terraform | Uses remote state in S3 |
-| Deploy to AWS EC2 | Terraform | `terraform apply -auto-approve` with selected image tag |
-| Capture outputs | Terraform outputs | Publishes endpoint/IP/image as artifact and summary |
-| Manual destroy | Terraform | `workflow_dispatch` with `action=destroy` |
+| Compute image tag from CI metadata | Bash | Reconstructs same tag generated in CI |
+| Terraform init | Terraform | Initializes providers |
+| Import existing resources | Terraform | Idempotent import to avoid recreate conflicts |
+| Deploy to Kubernetes | Terraform | `terraform apply -auto-approve` with the CI image tag |
+| Post-deploy verification | `minikube kubectl` | Checks rollout status and lists pods |
 
 Release visibility in Actions:
-- Workflow `Summary` shows deployed image version, source CI run, public IP and endpoint.
+- Workflow `Summary` shows the deployed image tag and source CI run number.
+
+### [`release-aws.yml`](.github/workflows/release-aws.yml) – Optional AWS Release (manual)
+
+Runs only on **manual dispatch** from the GitHub Actions UI to avoid unwanted AWS costs.
+
+| Stage | Tool | Notes |
+|---|---|---|
+| Terraform init (S3 backend) | Terraform | Uses remote state in S3 bucket |
+| Deploy/Destroy EC2 infra | Terraform | Action input controls `deploy` or `destroy` |
+| Output capture | Terraform outputs | Publishes public endpoint/IP and image reference |
+| Visual summary | GitHub Actions | Run summary includes deployed version and endpoint |
 
 ### Required GitHub Secrets
 
 | Secret | Used by | Description |
 |---|---|---|
-| `DOCKERHUB_USERNAME` | ci.yml, release.yml | Docker Hub username |
+| `DOCKERHUB_USERNAME` | ci.yml, release.yml, release-aws.yml | Docker Hub username |
 | `DOCKERHUB_TOKEN` | ci.yml | Docker Hub access token |
-| `AWS_ACCESS_KEY_ID` | release.yml | AWS access key for Terraform |
-| `AWS_SECRET_ACCESS_KEY` | release.yml | AWS secret key for Terraform |
-| `AWS_TF_STATE_BUCKET` | release.yml | S3 bucket name for Terraform remote state |
+| `DB_USER` | release.yml | Passed as `TF_VAR_database_user` |
+| `DB_PASSWORD` | release.yml | Passed as `TF_VAR_database_password` |
+| `AWS_ACCESS_KEY_ID` | release-aws.yml | AWS access key for Terraform |
+| `AWS_SECRET_ACCESS_KEY` | release-aws.yml | AWS secret key for Terraform |
+| `AWS_TF_STATE_BUCKET` | release-aws.yml | S3 bucket name for Terraform remote state |
 
 ### Pipeline Evidence (for submission)
 
 - CI run URL: `<paste-github-actions-ci-run-url>`
 - Release run URL: `<paste-github-actions-release-run-url>`
+- AWS release run URL: `<paste-github-actions-release-aws-run-url>`
 - Trivy artifacts: `trivy-fs-report`, `trivy-image-report`
 - AWS artifacts: `aws-terraform-output-<image_tag>`
 
 ---
 
-## IaC – Terraform (AWS)
+## IaC – Terraform
 
-The active release target is AWS EC2 using Terraform in `terraform-aws/`.
+All Kubernetes resources are also managed as code using the [Terraform Kubernetes provider](https://registry.terraform.io/providers/hashicorp/kubernetes/latest).
 
 ### Install Terraform
 
@@ -180,20 +210,42 @@ curl -fsSL https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_
   | sudo busybox unzip -d /usr/local/bin -
 ```
 
-### Terraform AWS Resources
+### Deploy with Terraform (local / minikube)
 
-| File | Purpose |
+```bash
+# Copy and optionally edit vars
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+
+cd terraform/
+terraform init
+terraform plan -var="image_tag=latest"
+terraform apply -auto-approve -var="image_tag=latest"
+```
+
+### Tear down
+
+```bash
+cd terraform/
+terraform destroy -auto-approve
+```
+
+### Terraform Resources
+
+| File | Resource |
 |---|---|
-| `terraform-aws/versions.tf` | AWS provider and S3 backend configuration |
-| `terraform-aws/network.tf` | VPC, subnet, route table, internet gateway |
-| `terraform-aws/security.tf` | Security group rules |
-| `terraform-aws/compute.tf` | EC2 instance and container bootstrap via user data |
-| `terraform-aws/outputs.tf` | Endpoint and deployment metadata outputs |
-| `terraform-aws/variables.tf` | Deployment parameters |
+| `namespace.tf` | `kubernetes_namespace` |
+| `configmap.tf` | `kubernetes_config_map` |
+| `secret.tf` | `kubernetes_secret` |
+| `deployment.tf` | `kubernetes_deployment` |
+| `service.tf` | `kubernetes_service` |
+| `hpa.tf` | `kubernetes_horizontal_pod_autoscaler_v2` |
+| `ingress.tf` | `kubernetes_ingress_v1` |
 
-### Legacy local Terraform
+---
 
-`terraform/` (Kubernetes + Minikube) is kept for local reference only and is no longer used by the release pipeline.
+## AWS Bonus Deployment (EC2 + Terraform)
+
+This repository also includes an optional AWS path in `terraform-aws/` and a manual workflow in `.github/workflows/release-aws.yml`.
 
 ### What gets created in AWS
 
@@ -231,12 +283,6 @@ aws s3api put-bucket-encryption \
 
 ### Deploy in AWS from GitHub Actions
 
-Automatic deploy:
-1. Push to `main`.
-2. CI builds/pushes the image.
-3. Release workflow auto-deploys to AWS.
-
-Manual deploy override:
 1. Open **Actions** -> **Release – Deploy to AWS EC2**.
 2. Click **Run workflow** and choose:
 3. `action=deploy`
@@ -256,6 +302,56 @@ Run the same workflow with:
 - same `aws_region` used for deploy
 
 ---
+
+## Kubernetes Deployment
+
+### Local (minikube + terraform)
+
+```bash
+# Start minikube with ingress
+minikube start
+minikube addons enable ingress
+kubectl config use-context minikube
+
+# Deploy with Terraform
+cd terraform/
+terraform init
+terraform apply -auto-approve \
+  -var="image_name=<dockerhub_user>/devsu-demo-nodejs" \
+  -var="image_tag=latest" \
+  -var="database_user=user" \
+  -var="database_password=password" \
+  -var="kubeconfig_context=minikube"
+
+# Verify pods (should show 2 Running)
+minikube kubectl -- get pods -n devsu-demo
+
+# Check HPA
+minikube kubectl -- get hpa -n devsu-demo
+
+# Check ingress
+minikube kubectl -- get ingress -n devsu-demo
+
+# Access via port-forward
+minikube kubectl -- port-forward svc/devsu-demo-svc 8000:8000 -n devsu-demo
+curl http://localhost:8000/api/users
+```
+
+> This project is deployed to **local Minikube** for the technical test.  
+> Public endpoint URL: `N/A (local environment)`
+
+### Kubernetes Resources
+
+| Resource | Name | Detail |
+|---|---|---|
+| Namespace | `devsu-demo` | Isolated namespace |
+| ConfigMap | `devsu-demo-config` | `DATABASE_NAME`, `PORT`, `NODE_ENV` |
+| Secret | `devsu-demo-secret` | `DATABASE_USER`, `DATABASE_PASSWORD` |
+| Deployment | `devsu-demo-deployment` | 2 replicas, non-root, liveness+readiness probes |
+| HPA | `devsu-demo-hpa` | Min 2 / Max 5 pods, CPU 70% / Mem 80% |
+| Service | `devsu-demo-svc` | ClusterIP on port 8000 |
+| Ingress | `devsu-demo-ingress` | nginx, host `devsu-demo.local` |
+
 ---
 
 ## Requirement Checklist
@@ -266,10 +362,12 @@ Run the same workflow with:
 | Dockerized app (`env`, non-root user, port, healthcheck) | Complete | `Dockerfile` |
 | Pipeline with build, tests, lint, coverage, docker build/push | Complete | `.github/workflows/ci.yml` |
 | Vulnerability scan (optional) | Complete | Trivy jobs and artifacts in CI |
-| Automatic deploy after CI success | Complete | `.github/workflows/release.yml` (`workflow_run`) |
-| IaC deploy on public cloud provider (AWS) | Complete | `terraform-aws/` + `.github/workflows/release.yml` |
+| Kubernetes deploy from pipeline | Complete | `.github/workflows/release.yml` |
+| Kubernetes resources (ConfigMap, Secret, Ingress, HPA, etc.) | Complete | `terraform/*.tf` |
+| At least 2 replicas and horizontal scaling | Complete | `terraform/deployment.tf`, `terraform/hpa.tf` |
+| Optional IaC on public cloud provider (bonus) | Ready to execute | `terraform-aws/` + `.github/workflows/release-aws.yml` |
 | README with diagrams and deployment details | Complete | This file |
-| Public endpoint URL | Complete after deploy | Release summary and `terraform-aws` outputs |
+| Public endpoint URL | Conditional | Local path is private; AWS path outputs a public URL after deploy |
 | `.zip` / `.rar` deliverable for submission | Pending manual step | Generate and attach before final submission |
 
 ---
