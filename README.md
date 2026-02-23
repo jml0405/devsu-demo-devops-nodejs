@@ -307,13 +307,6 @@ Destroy to avoid charges:
 - AWS release workflow page: https://github.com/jml0405/devsu-demo-devops-nodejs/actions/workflows/release-aws.yml
 - Public endpoint: http://3.149.0.56/api/users
 
-If required by evaluator, include screenshots of:
-
-- Successful CI run summary
-- Successful Minikube release summary
-- Successful AWS release summary with endpoint and outputs
-- Trivy artifacts
-
 ---
 
 ## Requirement Checklist
