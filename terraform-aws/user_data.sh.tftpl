@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Amazon Linux 2023
+if command -v dnf >/dev/null 2>&1; then
+  dnf update -y
+  dnf install -y docker
+else
+  yum update -y
+  yum install -y docker
+fi
+
+systemctl enable docker
+systemctl start docker
+
+# Pull and run the selected version from Docker Hub.
+docker rm -f ${container_name} || true
+docker pull ${image_ref}
+
+docker run -d \
+  --name ${container_name} \
+  --restart unless-stopped \
+  -p ${public_port}:${app_port} \
+  ${image_ref}
