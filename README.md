@@ -356,9 +356,3 @@ Response (`201`):
 ```json
 { "id": 1, "dni": "12345678", "name": "Jane Doe" }
 ```
-
----
-
-## License
-
-Copyright © 2023 Devsu. All rights reserved.
